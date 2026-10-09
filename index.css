@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+body, html {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #0b0f19;
+  user-select: none;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+#canvas-container {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#canvas-container canvas {
+  display: block;
+}
+
+/* Crosshair */
+#crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: all 0.15s ease;
+}
+
+#crosshair::before, #crosshair::after {
+  content: '';
+  position: absolute;
+  background-color: rgba(16, 185, 129, 0.9);
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
+}
+
+#crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+#crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+
+.ads-active #crosshair {
+  transform: translate(-50%, -50%) scale(0.3);
+  opacity: 0.3;
+}
+
+.hit-flash {
+  animation: hitFlash 0.3s ease-out;
+}
+
+@keyframes hitFlash {
+  0% { box-shadow: inset 0 0 100px rgba(239, 68, 68, 0.6); }
+  100% { box-shadow: inset 0 0 0px rgba(239, 68, 68, 0); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 2s ease-in-out infinite;
+}
