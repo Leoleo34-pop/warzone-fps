@@ -108,6 +108,7 @@ export default function App() {
     phase: 'PARACHUTE' | 'GROUND';
     isStarted: boolean;
     isOver: boolean;
+    isEliminating: boolean;
     clock: THREE.Clock;
     animationId: number | null;
     recoilPitch: number;
@@ -138,6 +139,7 @@ export default function App() {
   const [showResume, setShowResume] = useState(false);
   const [fps, setFps] = useState(60);
   const [timeOfDay, setTimeOfDay] = useState('Day');
+  const [isEliminating, setIsEliminating] = useState(false);
 
   // ============================================
   // INITIALIZATION
@@ -299,6 +301,7 @@ export default function App() {
       phase: 'PARACHUTE',
       isStarted: true,
       isOver: false,
+      isEliminating: false,
       clock: new THREE.Clock(),
       animationId: null,
       recoilPitch: 0,
@@ -854,10 +857,13 @@ export default function App() {
       obj.lod.update(game.camera);
     });
 
-    if (game.phase === 'PARACHUTE') {
-      updateParachute(game, delta);
-    } else {
-      updateGround(game, delta);
+    // Skip gameplay updates during elimination (but keep rendering)
+    if (!game.isEliminating) {
+      if (game.phase === 'PARACHUTE') {
+        updateParachute(game, delta);
+      } else {
+        updateGround(game, delta);
+      }
     }
 
     // Decay recoil
@@ -1330,12 +1336,266 @@ export default function App() {
   }
 
   function triggerGameOver(game: NonNullable<typeof gameRef.current>) {
-    game.isOver = true;
-    game.isStarted = false;
-    if (game.animationId) cancelAnimationFrame(game.animationId);
-    document.exitPointerLock();
-    setGameResult('defeat');
-    setGamePhase('GAMEOVER');
+    // Lancer l'effet cinématique d'élimination
+    game.isEliminating = true;
+    setIsEliminating(true);
+    playEliminationEffect(game, () => {
+      game.isEliminating = false;
+      game.isOver = true;
+      game.isStarted = false;
+      if (game.animationId) cancelAnimationFrame(game.animationId);
+      document.exitPointerLock();
+      setGameResult('defeat');
+      setGamePhase('GAMEOVER');
+      setIsEliminating(false);
+    });
+  }
+
+  // ============================================
+  // ELIMINATION EFFECT (Fortnite-style)
+  // ============================================
+  function playEliminationEffect(game: NonNullable<typeof gameRef.current>, onComplete: () => void) {
+    const playerPos = game.yawObject.position.clone();
+    const eliminationDuration = 3500; // 3.5 secondes d'animation
+
+    // 1. Créer le drone d'extraction (plus détaillé)
+    const droneGroup = new THREE.Group();
+
+    // Corps principal du drone (disque)
+    const droneBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.5, 0.5, 0.15, 12),
+      new THREE.MeshStandardMaterial({
+        color: 0x00ffff,
+        emissive: 0x00ffff,
+        emissiveIntensity: 2.0,
+        metalness: 0.9,
+        roughness: 0.1
+      })
+    );
+    droneGroup.add(droneBody);
+
+    // Anneau lumineux autour du drone
+    const ringGeo = new THREE.TorusGeometry(0.6, 0.05, 8, 16);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.8
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.PI / 2;
+    droneGroup.add(ring);
+
+    // Lumières du drone (plus puissantes)
+    const droneLight = new THREE.PointLight(0x00ffff, 5, 20);
+    droneLight.position.set(0, -0.5, 0);
+    droneGroup.add(droneLight);
+
+    const droneLightTop = new THREE.PointLight(0x00ffff, 3, 15);
+    droneLightTop.position.set(0, 0.5, 0);
+    droneGroup.add(droneLightTop);
+
+    // Position initiale du drone (haut dans le ciel)
+    droneGroup.position.set(playerPos.x, playerPos.y + 40, playerPos.z);
+    game.scene.add(droneGroup);
+
+    // 2. Créer le rayon lumineux (beam) - plus large et plus visible
+    const beamGeometry = new THREE.CylinderGeometry(1.2, 1.2, 40, 20, 1, true);
+    const beamMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending
+    });
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+    beam.position.set(playerPos.x, playerPos.y + 20, playerPos.z);
+    game.scene.add(beam);
+
+    // Rayon intérieur plus brillant
+    const innerBeamGeo = new THREE.CylinderGeometry(0.6, 0.6, 40, 16, 1, true);
+    const innerBeamMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending
+    });
+    const innerBeam = new THREE.Mesh(innerBeamGeo, innerBeamMat);
+    innerBeam.position.copy(beam.position);
+    game.scene.add(innerBeam);
+
+    // 3. Créer des particules d'aspiration (plus nombreuses)
+    const particles: THREE.Mesh[] = [];
+    const particleCount = 50;
+
+    for (let i = 0; i < particleCount; i++) {
+      const size = 0.08 + Math.random() * 0.12;
+      const particleGeo = new THREE.SphereGeometry(size, 8, 8);
+      const particleMat = new THREE.MeshBasicMaterial({
+        color: i % 3 === 0 ? 0xffffff : 0x00ffff,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending
+      });
+      const particle = new THREE.Mesh(particleGeo, particleMat);
+
+      // Position aléatoire autour du joueur (spirale)
+      const angle = (i / particleCount) * Math.PI * 4;
+      const radius = 0.5 + (i / particleCount) * 2.5;
+      const height = Math.random() * 3;
+      particle.position.set(
+        playerPos.x + Math.cos(angle) * radius,
+        playerPos.y + height,
+        playerPos.z + Math.sin(angle) * radius
+      );
+
+      // Stocker les données d'animation
+      (particle as any).startAngle = angle;
+      (particle as any).startRadius = radius;
+      (particle as any).startHeight = height;
+
+      game.scene.add(particle);
+      particles.push(particle);
+    }
+
+    // 4. Animer l'effet
+    const startTime = performance.now();
+
+    function animateElimination() {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / eliminationDuration, 1);
+
+      // Phase 1: Le drone descend rapidement (0-25%)
+      if (progress < 0.25) {
+        const droneProgress = progress / 0.25;
+        const eased = 1 - Math.pow(1 - droneProgress, 3); // Ease out cubic
+        droneGroup.position.y = playerPos.y + 40 - (eased * 35);
+      } else {
+        droneGroup.position.y = playerPos.y + 5;
+      }
+
+      // Phase 2: Le rayon apparaît et s'intensifie (15-45%)
+      if (progress > 0.15 && progress < 0.45) {
+        const beamProgress = (progress - 0.15) / 0.3;
+        const eased = Math.pow(beamProgress, 2); // Ease in quad
+        beamMaterial.opacity = eased * 0.5;
+        innerBeamMat.opacity = eased * 0.7;
+        beam.scale.y = 0.3 + eased * 0.7;
+        innerBeam.scale.y = 0.3 + eased * 0.7;
+      } else if (progress >= 0.45 && progress < 0.7) {
+        // Maintenir l'intensité
+        beamMaterial.opacity = 0.5;
+        innerBeamMat.opacity = 0.7;
+      }
+
+      // Phase 3: Les particules s'élèvent en spirale (35-75%)
+      if (progress > 0.35 && progress < 0.75) {
+        const particleProgress = (progress - 0.35) / 0.4;
+        particles.forEach((particle, i) => {
+          const startAngle = (particle as any).startAngle;
+          const startRadius = (particle as any).startRadius;
+
+          // Spirale ascendante
+          const newAngle = startAngle + particleProgress * Math.PI * 3;
+          const newRadius = startRadius * (1 - particleProgress * 0.8);
+          const newHeight = (particle as any).startHeight + particleProgress * 15;
+
+          particle.position.x = playerPos.x + Math.cos(newAngle) * newRadius;
+          particle.position.z = playerPos.z + Math.sin(newAngle) * newRadius;
+          particle.position.y = playerPos.y + newHeight;
+
+          // Fade out
+          (particle.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - particleProgress);
+
+          // Scale down
+          const scale = 1 - particleProgress * 0.5;
+          particle.scale.setScalar(scale);
+
+          // Rotation
+          particle.rotation.x += 0.15;
+          particle.rotation.y += 0.15;
+        });
+      }
+
+      // Phase 4: Le joueur disparaît (55-85%)
+      if (progress > 0.55 && progress < 0.85) {
+        const fadeProgress = (progress - 0.55) / 0.3;
+        const eased = Math.pow(fadeProgress, 2); // Ease in
+        const scale = 1 - eased;
+        game.pitchObject.scale.setScalar(scale);
+        game.yawObject.scale.setScalar(scale);
+
+        // Effet de translation vers le haut (aspiration)
+        game.yawObject.position.y += 0.05 * (1 - fadeProgress);
+      }
+
+      // Phase 5: Tout disparaît (75-100%)
+      if (progress > 0.75) {
+        const finalFade = (progress - 0.75) / 0.25;
+        const eased = Math.pow(finalFade, 2);
+        beamMaterial.opacity = 0.5 * (1 - eased);
+        innerBeamMat.opacity = 0.7 * (1 - eased);
+
+        // Drone s'élève et disparaît
+        droneGroup.position.y += 0.3;
+        droneGroup.children.forEach(child => {
+          if (child instanceof THREE.Mesh && child.material instanceof THREE.Material) {
+            child.material.transparent = true;
+            child.material.opacity = Math.max(0, 1 - eased * 1.5);
+          }
+          if (child instanceof THREE.PointLight) {
+            child.intensity = 5 * (1 - eased);
+          }
+        });
+      }
+
+      // Rotation du drone
+      droneGroup.rotation.y += 0.08;
+
+      // Pulse du rayon
+      if (progress > 0.2 && progress < 0.75) {
+        const pulse = Math.sin(elapsed * 0.01) * 0.1 + 1;
+        beam.scale.x = pulse;
+        beam.scale.z = pulse;
+        innerBeam.scale.x = pulse * 0.8;
+        innerBeam.scale.z = pulse * 0.8;
+      }
+
+      // Continuer l'animation
+      if (progress < 1) {
+        requestAnimationFrame(animateElimination);
+      } else {
+        // Nettoyer tous les objets
+        game.scene.remove(droneGroup);
+        game.scene.remove(beam);
+        game.scene.remove(innerBeam);
+        particles.forEach(p => game.scene.remove(p));
+
+        // Disposer des géométries et matériaux
+        droneGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry.dispose();
+            if (child.material instanceof THREE.Material) {
+              child.material.dispose();
+            }
+          }
+        });
+        beam.geometry.dispose();
+        beamMaterial.dispose();
+        innerBeam.geometry.dispose();
+        innerBeamMat.dispose();
+        particles.forEach(p => {
+          p.geometry.dispose();
+          (p.material as THREE.Material).dispose();
+        });
+
+        // Appeler le callback pour afficher l'écran de game over
+        onComplete();
+      }
+    }
+
+    // Démarrer l'animation
+    animateElimination();
   }
 
   function triggerVictory(game: NonNullable<typeof gameRef.current>) {
@@ -1353,7 +1613,7 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const game = gameRef.current;
-      if (!game || !game.isStarted || game.isOver) return;
+      if (!game || !game.isStarted || game.isOver || game.isEliminating) return;
 
       const key = e.code.replace('Key', '').toLowerCase();
       game.keys[key] = true;
@@ -1380,7 +1640,7 @@ export default function App() {
 
     const handleMouseMove = (e: MouseEvent) => {
       const game = gameRef.current;
-      if (!game || !game.isStarted || game.isOver) return;
+      if (!game || !game.isStarted || game.isOver || game.isEliminating) return;
       if (document.pointerLockElement !== game.renderer.domElement) return;
 
       const dx = e.movementX || 0;
@@ -1401,7 +1661,7 @@ export default function App() {
 
     const handleMouseDown = (e: MouseEvent) => {
       const game = gameRef.current;
-      if (!game || !game.isStarted || game.isOver) return;
+      if (!game || !game.isStarted || game.isOver || game.isEliminating) return;
       if (document.pointerLockElement !== game.renderer.domElement) return;
 
       if (e.button === 0 && game.phase === 'GROUND') {
@@ -1531,6 +1791,23 @@ export default function App() {
         <div className="absolute inset-0 pointer-events-none hit-flash z-30" />
       )}
 
+      {/* Elimination overlay */}
+      {isEliminating && (
+        <div className="absolute inset-0 pointer-events-none z-35 elimination-overlay scanline-effect flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-6xl mb-4 animate-bounce">🚁</div>
+            <div className="bg-black/70 backdrop-blur-sm px-8 py-4 rounded-xl border-2 border-cyan-400/60 shadow-[0_0_30px_rgba(0,255,255,0.3)]">
+              <p className="text-cyan-400 text-2xl font-bold tracking-widest uppercase animate-pulse">
+                ÉLIMINÉ
+              </p>
+              <p className="text-cyan-300/70 text-sm mt-2">
+                Extraction par drone en cours...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {gamePhase === 'MENU' && (
         <div className="absolute inset-0 bg-slate-950/95 z-50 flex flex-col items-center justify-center p-6 backdrop-blur-md">
           <div className="max-w-xl w-full bg-slate-900 border border-slate-700 p-8 rounded-2xl shadow-2xl text-center fade-in">
@@ -1592,17 +1869,37 @@ export default function App() {
       {gamePhase === 'GAMEOVER' && (
         <div className="absolute inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-6 backdrop-blur-md">
           <div className="max-w-md w-full bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center shadow-2xl fade-in">
-            <h2 className={`text-4xl font-extrabold mb-2 tracking-wide ${gameResult === 'victory' ? 'text-amber-500' : 'text-red-500'}`}>
-              {gameResult === 'victory' ? '🏆 VICTOIRE TACTIQUE' : '💀 OPÉRATION ÉCHOUÉE'}
-            </h2>
-            <p className="text-slate-400 mb-6 text-sm">
-              {gameResult === 'victory'
-                ? 'Tous les hostiles ont été neutralisés.'
-                : 'Vous avez succombé aux tirs ennemis.'}
-            </p>
+            {gameResult === 'defeat' ? (
+              <>
+                <div className="text-6xl mb-4">🚁</div>
+                <h2 className="text-4xl font-extrabold mb-2 tracking-wide text-cyan-400">
+                  ÉLIMINÉ
+                </h2>
+                <p className="text-cyan-300/70 mb-2 text-sm font-mono">
+                  EXTRACTION PAR DRONE COMPLÉTÉE
+                </p>
+                <p className="text-slate-400 mb-6 text-sm">
+                  Vous avez été éliminé de la zone de combat.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-6xl mb-4">🏆</div>
+                <h2 className="text-4xl font-extrabold mb-2 tracking-wide text-amber-500">
+                  VICTOIRE TACTIQUE
+                </h2>
+                <p className="text-slate-400 mb-6 text-sm">
+                  Tous les hostiles ont été neutralisés.
+                </p>
+              </>
+            )}
             <button
               onClick={restartGame}
-              className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold uppercase tracking-wider rounded-xl shadow transition cursor-pointer"
+              className={`w-full py-3.5 font-bold uppercase tracking-wider rounded-xl shadow transition cursor-pointer ${
+                gameResult === 'defeat'
+                  ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+              }`}
             >
               🔄 Redéployer
             </button>
