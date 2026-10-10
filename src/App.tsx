@@ -66,16 +66,16 @@ const MOVEMENT_CONFIG = {
 };
 
 // ============================================
-// VISUAL CONFIG (UE5-inspired)
+// VISUAL CONFIG (UE5-inspired + High-Key)
 // ============================================
 const VISUAL_CONFIG = {
   SHADOW_MAP_SIZE: 4096,
-  BLOOM_STRENGTH: 0.4,
-  BLOOM_RADIUS: 0.5,
-  BLOOM_THRESHOLD: 0.85,
+  BLOOM_STRENGTH: 0.6, // Stronger bloom for more glow
+  BLOOM_RADIUS: 0.6, // Wider bloom
+  BLOOM_THRESHOLD: 0.7, // Lower threshold = more things bloom
   DAY_NIGHT_CYCLE_SPEED: 0.02, // radians per second
   LOD_DISTANCES: [0, 50, 120], // Near, Medium, Far
-  ENV_MAP_INTENSITY: 0.6,
+  ENV_MAP_INTENSITY: 0.8, // Stronger reflections
 };
 
 export default function App() {
@@ -154,8 +154,8 @@ export default function App() {
 
     // Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb); // Sky blue
-    scene.fog = new THREE.FogExp2(0x87ceeb, 0.004);
+    scene.background = new THREE.Color(0xa8d8ea); // Brighter sky blue
+    scene.fog = new THREE.FogExp2(0xa8d8ea, 0.003); // Lighter fog for more visibility
 
     // Camera
     const camera = new THREE.PerspectiveCamera(
@@ -182,7 +182,7 @@ export default function App() {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.8; // Local Exposure: brighter overall
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     containerRef.current.appendChild(renderer.domElement);
 
@@ -212,18 +212,32 @@ export default function App() {
     composer.addPass(fxaaPass);
 
     // ============================================
-    // LIGHTING (Lumen-inspired)
+    // LIGHTING (Lumen + Local Exposure + Skylight Leaking)
     // ============================================
-    // Ambient light (base illumination)
-    const ambientLight = new THREE.AmbientLight(0x8899bb, 0.5);
+    // Ambient light - Lumen: Global illumination base
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); // Much brighter
     scene.add(ambientLight);
 
-    // Hemisphere light (sky/ground color bleed)
-    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x362d1e, 0.6);
+    // Hemisphere light - Skylight Leaking: light bleeds everywhere
+    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x98d982, 1.5); // Sky blue + green ground bounce
     scene.add(hemiLight);
 
-    // Sun (directional light with shadows)
-    const sunLight = new THREE.DirectionalLight(0xfff5ea, 2.0);
+    // Additional fill lights to eliminate dark corners (Lumen bounce simulation)
+    const fillLight1 = new THREE.DirectionalLight(0xffe4b5, 0.8); // Warm fill - stronger
+    fillLight1.position.set(-50, 80, -50);
+    scene.add(fillLight1);
+
+    const fillLight2 = new THREE.DirectionalLight(0xb0e0e6, 0.6); // Cool fill - stronger
+    fillLight2.position.set(50, 60, 50);
+    scene.add(fillLight2);
+
+    // Extra ambient fill from below (skylight leaking simulation)
+    const groundFill = new THREE.DirectionalLight(0x98d982, 0.4); // Green ground bounce
+    groundFill.position.set(0, -20, 0);
+    scene.add(groundFill);
+
+    // Sun (directional light with shadows) - High-Key: bright but soft
+    const sunLight = new THREE.DirectionalLight(0xfff8dc, 2.5); // Brighter, warmer sun
     sunLight.position.set(80, 150, 60);
     sunLight.castShadow = true;
 
@@ -327,39 +341,41 @@ export default function App() {
     colorBleedLights: THREE.PointLight[],
     cubeCamera: THREE.CubeCamera
   ) {
-    // Ground with PBR material
+    // Ground with PBR material - High-Key: bright, saturated colors
     const groundGeo = new THREE.PlaneGeometry(400, 400, 64, 64);
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x3d4a3d,
-      roughness: 0.95,
+      color: 0x7cb342, // Vibrant green (Fortnite-style)
+      roughness: 0.85,
       metalness: 0.02,
       envMap: cubeCamera.renderTarget.texture,
-      envMapIntensity: 0.1,
+      envMapIntensity: 0.2,
+      emissive: 0x2e7d32, // Light bounce simulation
+      emissiveIntensity: 0.15,
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Grid
-    const grid = new THREE.GridHelper(400, 80, 0x4a5568, 0x374151);
+    // Grid - Brighter for High-Key style
+    const grid = new THREE.GridHelper(400, 80, 0x2ecc71, 0x27ae60); // Bright green grid
     grid.position.y = 0.02;
-    (grid.material as THREE.Material).opacity = 0.3;
+    (grid.material as THREE.Material).opacity = 0.25;
     (grid.material as THREE.Material).transparent = true;
     scene.add(grid);
 
-    // Buildings with LOD
+    // Buildings with LOD - High-Key: vibrant, saturated colors
     const buildingDefs = [
-      { x: -40, z: -40, w: 22, h: 18, d: 22, color: 0x8b4513 },
-      { x: 42, z: -50, w: 26, h: 22, d: 18, color: 0x696969 },
-      { x: -52, z: 42, w: 18, h: 15, d: 26, color: 0xa0522d },
-      { x: 48, z: 38, w: 24, h: 20, d: 22, color: 0x708090 },
-      { x: 0, z: -78, w: 36, h: 14, d: 18, color: 0x8b7355 },
-      { x: -72, z: -8, w: 16, h: 12, d: 30, color: 0xb22222 },
-      { x: 72, z: -12, w: 20, h: 16, d: 16, color: 0x556b2f },
-      { x: 0, z: 62, w: 32, h: 10, d: 14, color: 0x8b4513 },
-      { x: -20, z: 80, w: 18, h: 8, d: 12, color: 0x696969 },
-      { x: 60, z: -80, w: 14, h: 10, d: 20, color: 0xa0522d },
+      { x: -40, z: -40, w: 22, h: 18, d: 22, color: 0xff6b6b }, // Vibrant red
+      { x: 42, z: -50, w: 26, h: 22, d: 18, color: 0x4ecdc4 }, // Bright teal
+      { x: -52, z: 42, w: 18, h: 15, d: 26, color: 0xffd93d }, // Bright yellow
+      { x: 48, z: 38, w: 24, h: 20, d: 22, color: 0x6c5ce7 }, // Vibrant purple
+      { x: 0, z: -78, w: 36, h: 14, d: 18, color: 0xff9ff3 }, // Bright pink
+      { x: -72, z: -8, w: 16, h: 12, d: 30, color: 0x54a0ff }, // Bright blue
+      { x: 72, z: -12, w: 20, h: 16, d: 16, color: 0x5f27cd }, // Deep purple
+      { x: 0, z: 62, w: 32, h: 10, d: 14, color: 0xff6348 }, // Orange-red
+      { x: -20, z: 80, w: 18, h: 8, d: 12, color: 0x1dd1a1 }, // Bright green
+      { x: 60, z: -80, w: 14, h: 10, d: 20, color: 0xfeca57 }, // Golden yellow
     ];
 
     buildingDefs.forEach(b => {
@@ -394,15 +410,15 @@ export default function App() {
         position: new THREE.Vector3(b.x, 0, b.z),
       });
 
-      // Color bleeding light (Lumen-inspired)
-      const bleedLight = new THREE.PointLight(b.color, 0.8, 15);
+      // Color bleeding light (Lumen-inspired) - Stronger for High-Key
+      const bleedLight = new THREE.PointLight(b.color, 1.5, 25); // Brighter, wider radius
       bleedLight.position.set(b.x, b.h / 2, b.z + b.d / 2 + 1);
       scene.add(bleedLight);
       colorBleedLights.push(bleedLight);
     });
 
-    // Containers with LOD
-    const containerColors = [0x991b1b, 0x1e3a8a, 0x065f46, 0xb45309, 0x581c87];
+    // Containers with LOD - High-Key: vibrant colors
+    const containerColors = [0xff4757, 0x3742fa, 0x2ed573, 0xffa502, 0xa55eea];
     for (let i = 0; i < 22; i++) {
       const color = containerColors[Math.floor(Math.random() * containerColors.length)];
       const lod = new THREE.LOD();
@@ -447,9 +463,14 @@ export default function App() {
       lodObjects.push({ lod, position: new THREE.Vector3(rx, 0, rz) });
     }
 
-    // Barriers
+    // Barriers - Brighter for visibility
     for (let i = 0; i < 12; i++) {
-      const mat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.9 });
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xbdc3c7, // Light gray
+        roughness: 0.7,
+        emissive: 0x95a5a6,
+        emissiveIntensity: 0.2,
+      });
       const geo = new THREE.BoxGeometry(6, 1.2, 0.6);
       const wall = new THREE.Mesh(geo, mat);
       const wx = (Math.random() - 0.5) * 180;
@@ -468,13 +489,15 @@ export default function App() {
   function createBuildingHighDetail(w: number, h: number, d: number, color: number, envMap: THREE.CubeCamera): THREE.Group {
     const group = new THREE.Group();
 
-    // Main structure with PBR
+    // Main structure with PBR - High-Key + Lumen bounce
     const mat = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.7,
-      metalness: 0.1,
+      roughness: 0.6, // Slightly less rough for more light reflection
+      metalness: 0.05,
       envMap: envMap.renderTarget.texture,
-      envMapIntensity: VISUAL_CONFIG.ENV_MAP_INTENSITY,
+      envMapIntensity: 0.8, // More reflections
+      emissive: new THREE.Color(color).multiplyScalar(0.15), // Light bounce simulation
+      emissiveIntensity: 0.3,
     });
     const geom = new THREE.BoxGeometry(w, h, d, 4, 4, 4); // Subdivided for detail
     const mesh = new THREE.Mesh(geom, mat);
@@ -483,13 +506,15 @@ export default function App() {
     mesh.receiveShadow = true;
     group.add(mesh);
 
-    // Roof
+    // Roof - Brighter for High-Key style
     const roofMat = new THREE.MeshStandardMaterial({
-      color: 0x4b5563,
-      roughness: 0.6,
-      metalness: 0.3,
+      color: 0x95a5a6, // Lighter gray
+      roughness: 0.5,
+      metalness: 0.2,
       envMap: envMap.renderTarget.texture,
-      envMapIntensity: 0.4,
+      envMapIntensity: 0.5,
+      emissive: 0x34495e,
+      emissiveIntensity: 0.2,
     });
     const roofGeom = new THREE.BoxGeometry(w + 1.2, 0.6, d + 1.2);
     const roof = new THREE.Mesh(roofGeom, roofMat);
@@ -497,15 +522,15 @@ export default function App() {
     roof.castShadow = true;
     group.add(roof);
 
-    // Windows (detailed)
+    // Windows (detailed) - Bright, glowing for High-Key
     const windowMat = new THREE.MeshStandardMaterial({
-      color: 0x1e3a5f,
-      roughness: 0.1,
-      metalness: 0.8,
-      emissive: 0x1a365d,
-      emissiveIntensity: 0.5,
+      color: 0x74b9ff, // Bright blue
+      roughness: 0.05,
+      metalness: 0.9,
+      emissive: 0x0984e3, // Strong blue glow
+      emissiveIntensity: 0.8, // Very bright
       envMap: envMap.renderTarget.texture,
-      envMapIntensity: 0.8,
+      envMapIntensity: 1.0,
     });
 
     const windowCount = Math.floor(w / 4);
@@ -547,7 +572,13 @@ export default function App() {
 
   function createBuildingMediumDetail(w: number, h: number, d: number, color: number): THREE.Group {
     const group = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.1 });
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.6,
+      metalness: 0.05,
+      emissive: new THREE.Color(color).multiplyScalar(0.12),
+      emissiveIntensity: 0.25,
+    });
     const geom = new THREE.BoxGeometry(w, h, d);
     const mesh = new THREE.Mesh(geom, mat);
     mesh.position.y = h / 2;
@@ -555,7 +586,12 @@ export default function App() {
     mesh.receiveShadow = true;
     group.add(mesh);
 
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x4b5563, roughness: 0.6 });
+    const roofMat = new THREE.MeshStandardMaterial({
+      color: 0x95a5a6,
+      roughness: 0.5,
+      emissive: 0x34495e,
+      emissiveIntensity: 0.2,
+    });
     const roofGeom = new THREE.BoxGeometry(w + 1, 0.5, d + 1);
     const roof = new THREE.Mesh(roofGeom, roofMat);
     roof.position.y = h + 0.25;
@@ -566,7 +602,12 @@ export default function App() {
 
   function createBuildingLowDetail(w: number, h: number, d: number, color: number): THREE.Group {
     const group = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.7,
+      emissive: new THREE.Color(color).multiplyScalar(0.1),
+      emissiveIntensity: 0.2,
+    });
     const geom = new THREE.BoxGeometry(w, h, d);
     const mesh = new THREE.Mesh(geom, mat);
     mesh.position.y = h / 2;
@@ -578,10 +619,12 @@ export default function App() {
     const group = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.5,
-      metalness: 0.4,
+      roughness: 0.4, // Less rough for more light reflection
+      metalness: 0.3,
       envMap: envMap.renderTarget.texture,
-      envMapIntensity: 0.5,
+      envMapIntensity: 0.7,
+      emissive: new THREE.Color(color).multiplyScalar(0.1), // Light bounce
+      emissiveIntensity: 0.25,
     });
     const geom = new THREE.BoxGeometry(4, 3, 10, 2, 2, 2);
     const mesh = new THREE.Mesh(geom, mat);
@@ -604,7 +647,12 @@ export default function App() {
 
   function createContainerLowDetail(color: number): THREE.Group {
     const group = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.5,
+      emissive: new THREE.Color(color).multiplyScalar(0.08),
+      emissiveIntensity: 0.2,
+    });
     const geom = new THREE.BoxGeometry(4, 3, 10);
     const mesh = new THREE.Mesh(geom, mat);
     mesh.position.y = 1.5;
@@ -689,9 +737,26 @@ export default function App() {
 
     for (let i = 0; i < 8; i++) {
       const group = new THREE.Group();
-      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.6 });
-      const armorMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.4, metalness: 0.3 });
-      const pantsMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.7 });
+      // Enemies - High-Key: bright, visible colors
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0xff6b6b, // Bright red
+        roughness: 0.5,
+        emissive: 0xc0392b,
+        emissiveIntensity: 0.3,
+      });
+      const armorMat = new THREE.MeshStandardMaterial({
+        color: 0x2c3e50, // Bright dark blue
+        roughness: 0.3,
+        metalness: 0.4,
+        emissive: 0x34495e,
+        emissiveIntensity: 0.2,
+      });
+      const pantsMat = new THREE.MeshStandardMaterial({
+        color: 0x34495e, // Lighter gray-blue
+        roughness: 0.6,
+        emissive: 0x2c3e50,
+        emissiveIntensity: 0.15,
+      });
 
       const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.5), bodyMat);
       torso.position.y = 1.2;
@@ -816,36 +881,36 @@ export default function App() {
     const sunZ = 60;
     game.sunLight.position.set(sunX, Math.max(10, sunY), sunZ);
 
-    // Sun color and intensity based on time
+    // Sun color and intensity based on time - High-Key: always bright
     const dayFactor = Math.max(0, Math.sin(sunAngle));
     const sunsetFactor = Math.max(0, 1 - Math.abs(sunAngle - Math.PI / 2) / (Math.PI / 2));
 
-    // Day: warm white, Night: cool blue
-    const dayColor = new THREE.Color(0xfff5ea);
-    const nightColor = new THREE.Color(0x1a2332);
-    const sunsetColor = new THREE.Color(0xff8844);
+    // Day: bright warm white, Night: still relatively bright (no absolute black)
+    const dayColor = new THREE.Color(0xfff8dc); // Bright warm
+    const nightColor = new THREE.Color(0x4a6fa5); // Bright blue (not dark)
+    const sunsetColor = new THREE.Color(0xffb347); // Bright orange
 
     const sunColor = dayColor.clone().lerp(nightColor, 1 - dayFactor);
     if (sunsetFactor > 0.3) {
-      sunColor.lerp(sunsetColor, sunsetFactor * 0.5);
+      sunColor.lerp(sunsetColor, sunsetFactor * 0.6);
     }
 
     game.sunLight.color.copy(sunColor);
-    game.sunLight.intensity = 0.5 + dayFactor * 1.8;
+    game.sunLight.intensity = 1.5 + dayFactor * 1.5; // Always bright
 
-    // Ambient light
-    game.ambientLight.intensity = 0.3 + dayFactor * 0.4;
+    // Ambient light - Local Exposure: bright even at night
+    game.ambientLight.intensity = 0.8 + dayFactor * 0.6; // Never too dark
 
-    // Sky color
-    const skyDay = new THREE.Color(0x87ceeb);
-    const skyNight = new THREE.Color(0x0b0f19);
-    const skySunset = new THREE.Color(0xff6b35);
+    // Sky color - High-Key: vibrant, saturated
+    const skyDay = new THREE.Color(0xa8d8ea); // Bright sky blue
+    const skyNight = new THREE.Color(0x2c3e50); // Bright dark blue (not black)
+    const skySunset = new THREE.Color(0xff7675); // Vibrant pink-orange
     const skyColor = skyDay.clone().lerp(skyNight, 1 - dayFactor);
     if (sunsetFactor > 0.3) {
-      skyColor.lerp(skySunset, sunsetFactor * 0.4);
+      skyColor.lerp(skySunset, sunsetFactor * 0.5);
     }
     game.scene.background = skyColor;
-    game.scene.fog = new THREE.FogExp2(skyColor, 0.004);
+    game.scene.fog = new THREE.FogExp2(skyColor, 0.003); // Lighter fog
 
     // Update time of day label
     if (dayFactor > 0.7) setTimeOfDay('Day');
@@ -1005,8 +1070,8 @@ export default function App() {
     game.recoilPitch += recoilAmount + Math.random() * 0.003;
     game.recoilYaw += (Math.random() - 0.5) * 0.003;
 
-    const bulletGeo = new THREE.SphereGeometry(0.05, 6, 6);
-    const bulletMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+    const bulletGeo = new THREE.SphereGeometry(0.06, 8, 8);
+    const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffeb3b }); // Bright yellow
     const bulletMesh = new THREE.Mesh(bulletGeo, bulletMat);
 
     const bulletPos = new THREE.Vector3();
@@ -1029,13 +1094,13 @@ export default function App() {
   }
 
   function createMuzzleFlash(game: NonNullable<typeof gameRef.current>) {
-    const flashGeo = new THREE.SphereGeometry(0.08, 6, 6);
-    const flashMat = new THREE.MeshBasicMaterial({ color: 0xfef3c7, transparent: true, opacity: 0.95 });
+    const flashGeo = new THREE.SphereGeometry(0.1, 8, 8);
+    const flashMat = new THREE.MeshBasicMaterial({ color: 0xffff99, transparent: true, opacity: 1.0 });
     const flash = new THREE.Mesh(flashGeo, flashMat);
     flash.position.set(0, -0.035, -0.55);
     game.weaponGroup.add(flash);
 
-    const flashLight = new THREE.PointLight(0xffaa00, 3, 8);
+    const flashLight = new THREE.PointLight(0xffdd44, 5, 12); // Brighter, wider
     flashLight.position.copy(flash.position);
     game.weaponGroup.add(flashLight);
 
@@ -1190,8 +1255,8 @@ export default function App() {
   }
 
   function enemyShoot(game: NonNullable<typeof gameRef.current>, from: THREE.Vector3, target: THREE.Vector3) {
-    const geo = new THREE.SphereGeometry(0.07, 6, 6);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const geo = new THREE.SphereGeometry(0.08, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff5252 }); // Bright red
     const mesh = new THREE.Mesh(geo, mat);
 
     const start = new THREE.Vector3(from.x, from.y + 1.4, from.z);
@@ -1247,9 +1312,9 @@ export default function App() {
   }
 
   function createImpactEffect(scene: THREE.Scene, pos: THREE.Vector3, color: number) {
-    for (let i = 0; i < 5; i++) {
-      const geo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
-      const mat = new THREE.MeshBasicMaterial({ color, transparent: true });
+    for (let i = 0; i < 6; i++) {
+      const geo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
       const p = new THREE.Mesh(geo, mat);
       p.position.copy(pos);
       p.position.x += (Math.random() - 0.5) * 0.4;
